@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>맞춤 일자리 탐색·관리 에이전트</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <!-- 상단 헤더 -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+          JOB
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            맞춤 일자리 탐색·관리 시스템
+          </h1>
+          <p class="text-xs text-slate-500" id="lastRunText">나라일터 · 잡코리아 및 확장 사이트 자동 수집·규칙 필터링</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="switchTab('jobs')" id="tabBtn-jobs" class="px-3.5 py-2 rounded-lg text-sm font-semibold bg-indigo-50 text-indigo-700">
+          일자리 목록
+        </button>
+        <button onclick="switchTab('criteria')" id="tabBtn-criteria" class="px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">
+          내 맞춤 조건 설정
+        </button>
+        <button onclick="switchTab('sources')" id="tabBtn-sources" class="px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">
+          구직 사이트 & 로그인 관리
+        </button>
+        <button onclick="resetAndRecollect()" id="resetBtn" class="ml-1 px-3 py-2 rounded-lg text-xs font-semibold border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700">
+          DB 초기화 후 다시 받기
+        </button>
+        <button onclick="triggerCollect()" id="collectBtn" class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center gap-1.5">
+          <span id="collectBtnText">지금 즉시 업데이트</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <!-- 요약 통계 카드 -->
+    <section class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs text-slate-500">신규 미확인 공고</div>
+        <div class="text-2xl font-bold text-indigo-600 mt-1" id="stat-new">0</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs text-slate-500">전체 활성 공고</div>
+        <div class="text-2xl font-bold text-emerald-600 mt-1" id="stat-active">0</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs text-slate-500">관심 보관함</div>
+        <div class="text-2xl font-bold text-amber-600 mt-1" id="stat-saved">0</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs text-slate-500">지원 완료</div>
+        <div class="text-2xl font-bold text-blue-600 mt-1" id="stat-applied">0</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs text-slate-500">확인완료 / 마감됨</div>
+        <div class="text-2xl font-bold text-slate-500 mt-1" id="stat-archived">0</div>
+      </div>
+    </section>
+
+    <!-- 탭 1: 일자리 목록 -->
+    <section id="tab-jobs" class="space-y-4">
+      <!-- 필터 바 -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-medium">
+          <button onclick="setStatusFilter('new')" data-status="new" class="status-pill px-3 py-1.5 rounded-md bg-white text-slate-900 shadow-sm">신규</button>
+          <button onclick="setStatusFilter('all')" data-status="all" class="status-pill px-3 py-1.5 rounded-md text-slate-600">활성 전체</button>
+          <button onclick="setStatusFilter('saved')" data-status="saved" class="status-pill px-3 py-1.5 rounded-md text-slate-600">관심</button>
+          <button onclick="setStatusFilter('applied')" data-status="applied" class="status-pill px-3 py-1.5 rounded-md text-slate-600">지원완료</button>
+          <button onclick="setStatusFilter('expired')" data-status="expired" class="status-pill px-3 py-1.5 rounded-md text-slate-600">마감</button>
+          <button onclick="setStatusFilter('rejected')" data-status="rejected" class="status-pill px-3 py-1.5 rounded-md text-slate-600">확인완료</button>
+        </div>
+
+        <select id="filterSource" onchange="loadJobs()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white">
+          <option value="all">모든 사이트</option>
+        </select>
+
+        <select id="filterCareer" onchange="loadJobs()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700">
+          <option value="all">경력 전체</option>
+          <option value="신입">신입 지원가능 (신입+경력무관)</option>
+          <option value="신입전용">신입 명시 공고만</option>
+          <option value="경력">경력직</option>
+          <option value="무관">경력무관만</option>
+        </select>
+
+        <div class="flex-1 min-w-[200px]">
+          <input type="text" id="filterSearch" oninput="debounceLoadJobs()" placeholder="공고명, 기관/회사, 지역, 키워드 검색..." class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div id="jobsCountBadge" class="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg whitespace-nowrap">
+          총 0건
+        </div>
+      </div>
+
+      <!-- 공고 리스트 -->
+      <div id="jobsContainer" class="space-y-3"></div>
+      <!-- 페이지네이션 -->
+      <div id="paginationContainer" class="pt-2"></div>
+    </section>
+
+    <!-- 탭 2: 내 맞춤 조건 설정 -->
+    <section id="tab-criteria" class="hidden bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-5">
+      <div>
+        <h2 class="text-base font-bold text-slate-900">내가 원하는 일자리 조건 설정</h2>
+        <p class="text-xs text-slate-500 mt-0.5">새로 수집되는 공고와 일자리 목록을 직무 키워드·근무지역·경력·등록일 기준으로 필터링합니다.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            선호 직무 / 핵심 키워드 (쉼표로 구분 · <span class="text-indigo-600 font-bold">최소 1개 이상 일치하는 공고만 수집/표시</span>)
+          </label>
+          <input type="text" id="crit-include" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 전산, 데이터, 기획, 행정, IT, 개발, 분석, 연구" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            제외할 키워드 (쉼표로 구분 · <span class="text-rose-600 font-bold">1개라도 포함된 공고는 수집/목록에서 즉시 제외</span>)
+          </label>
+          <input type="text" id="crit-exclude" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 영업지원, 제약, 보험, 전산입력, 바이어개발 (비워두면 제외 없음)" />
+        </div>
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-semibold text-slate-700">
+              선호 근무지역 (쉼표로 구분 · <span class="text-indigo-600 font-bold">무관이면 모든 공고를 선호지역으로</span>)
+            </label>
+            <button
+              type="button"
+              onclick="document.getElementById('crit-locations').value='무관'; updateLocBadge();"
+              class="text-[11px] px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold"
+            >
+              '무관' 입력
+            </button>
+          </div>
+          <input
+            type="text"
+            id="crit-locations"
+            oninput="updateLocBadge()"
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            placeholder="예: 서울, 경기, 인천 또는 무관"
+          />
+          <p id="locBadgeNote" class="text-[11px] text-slate-500 mt-1">
+            ※ <strong>무관</strong>으로 설정하면 모든 공고를 선호지역으로 평가합니다.
+          </p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            희망 경력 구분 (<span class="text-indigo-600 font-bold">무관이면 신입·경력 모든 공고를 선호 조건으로</span>)
+          </label>
+          <select id="crit-career" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="무관">무관 (신입·경력 모든 공고 선호)</option>
+            <option value="신입">신입 선호 (신입 및 경력무관 우대)</option>
+            <option value="경력">경력 선호 (경력직 및 경력무관 우대)</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-3 gap-3 md:col-span-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">최근 등록일 제한 (일)</label>
+            <input type="number" id="crit-max-age" min="1" max="90" value="7" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">자동 업데이트 주기 (분)</label>
+            <input type="number" id="crit-schedule" min="15" max="1440" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="flex items-end pb-2">
+            <label class="flex items-center gap-2 text-xs sm:text-sm font-medium text-slate-700 cursor-pointer">
+              <input type="checkbox" id="crit-auto-enabled" class="w-4 h-4 accent-indigo-600" />
+              자동 수집 켜기
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button onclick="saveCriteria()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm">
+          조건 저장 및 스케줄러 반영
+        </button>
+      </div>
+    </section>
+
+    <!-- 탭 3: 구직 사이트 & 로그인 세션 관리 -->
+    <section id="tab-sources" class="hidden space-y-6">
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">등록된 구직 사이트 목록</h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              오픈된 사이트(나라일터 등)는 즉시 수집되며, 로그인이 필요한 사이트(잡코리아 등)는 <strong>[브라우저 로그인 세션 연결]</strong>로 1회 로그인해 두면 쿠키가 유지됩니다.
+            </p>
+          </div>
+        </div>
+        <div id="sourcesList" class="space-y-3"></div>
+      </div>
+
+      <!-- 새 구직 사이트 추가 폼 -->
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-900">새 구직 사이트 추가 (확장 플러그인)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">사이트 식별 ID (영문)</label>
+            <input type="text" id="newSrc-id" placeholder="예: saramin, wanted, work24" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">사이트 표시 이름</label>
+            <input type="text" id="newSrc-name" placeholder="예: 사람인 맞춤채용" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">회당 최대 수집 건수</label>
+            <input type="number" id="newSrc-max" value="100" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-xs font-semibold text-slate-700 mb-1">채용 목록 URL</label>
+            <input type="text" id="newSrc-url" placeholder="https://..." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">로그인 페이지 URL (로그인 필요 시)</label>
+            <input type="text" id="newSrc-loginUrl" placeholder="선택 사항 (비워두면 목록 URL 사용)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-2">
+          <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" id="newSrc-loginReq" class="w-4 h-4 accent-indigo-600" />
+            로그인이 필요한 구직 사이트입니다 (Playwright 세션 파일 생성)
+          </label>
+          <button onclick="addNewSource()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg">
+            + 사이트 등록
+          </button>
+        </div>
+      </div>
+
+      <!-- 최근 실행 로그 -->
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-3">
+        <h3 class="text-sm font-bold text-slate-900">최근 자동/수동 업데이트 이력</h3>
+        <div id="runLogsList" class="text-xs text-slate-600 space-y-2"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentStatus = 'new';
+    let searchTimer = null;
+    let pollTimer = null;
+    let currentPage = 1;
+    const PAGE_SIZE = 10;
+    let allFilteredJobs = [];
+
+    function switchTab(tab) {
+      ['jobs', 'criteria', 'sources'].forEach(t => {
+        document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById('tabBtn-' + t);
+        if (t === tab) {
+          btn.className = 'px-3.5 py-2 rounded-lg text-sm font-semibold bg-indigo-50 text-indigo-700';
+        } else {
+          btn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100';
+        }
+      });
+    }
+
+    function setStatusFilter(st) {
+      currentStatus = st;
+      document.querySelectorAll('.status-pill').forEach(btn => {
+        if (btn.dataset.status === st) {
+          btn.className = 'status-pill px-3 py-1.5 rounded-md bg-white text-slate-900 shadow-sm';
+        } else {
+          btn.className = 'status-pill px-3 py-1.5 rounded-md text-slate-600';
+        }
+      });
+      loadJobs();
+    }
+
+    function debounceLoadJobs() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadJobs, 250);
+    }
+
+    async function loadOverview() {
+      const res = await fetch('/api/overview');
+      const data = await res.json();
+
+      const st = data.stats;
+      document.getElementById('stat-new').innerText = st.new;
+      document.getElementById('stat-active').innerText = st.total_active;
+      document.getElementById('stat-saved').innerText = st.saved;
+      document.getElementById('stat-applied').innerText = st.applied;
+      document.getElementById('stat-archived').innerText = (st.rejected || 0) + ' / ' + (st.expired || 0);
+
+      if (st.last_run) {
+        document.getElementById('lastRunText').innerText =
+          `최근 업데이트: ${st.last_run.started_at.replace('T', ' ')} (${st.last_run.summary || st.last_run.status})`;
+      }
+
+      const btn = document.getElementById('collectBtn');
+      const btnText = document.getElementById('collectBtnText');
+      if (data.is_collecting) {
+        btn.disabled = true;
+        btn.classList.add('opacity-70');
+        btnText.innerText = '일자리 수집 진행 중...';
+        if (!pollTimer) {
+          pollTimer = setInterval(async () => {
+            await loadOverview();
+            await loadJobs();
+          }, 3000);
+        }
+      } else {
+        btn.disabled = false;
+        btn.classList.remove('opacity-70');
+        btnText.innerText = '지금 즉시 업데이트';
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      // 조건 폼 채우기
+      const c = data.criteria;
+      if (c && !document.getElementById('crit-include').dataset.loaded) {
+        document.getElementById('crit-include').value = c.include_keywords || '';
+        document.getElementById('crit-exclude').value = c.exclude_keywords || '';
+        document.getElementById('crit-locations').value = c.preferred_locations || '';
+        document.getElementById('crit-career').value = c.preferred_career || '무관';
+        document.getElementById('crit-max-age').value = c.max_age_days || 7;
+        document.getElementById('crit-schedule').value = c.schedule_minutes || 180;
+        document.getElementById('crit-auto-enabled').checked = !!c.auto_schedule_enabled;
+        document.getElementById('crit-include').dataset.loaded = '1';
+        updateLocBadge();
+      }
+
+      // 사이트 드롭다운 및 관리 목록 렌더링 (DB의 sources 테이블 값 그대로 표시)
+      renderSources(data.sources || []);
+      renderLogs(data.logs || []);
+    }
+
+    function renderSources(sources) {
+      const sel = document.getElementById('filterSource');
+      const curVal = sel.value;
+      sel.innerHTML = '<option value="all">모든 사이트</option>' +
+        sources.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+      sel.value = curVal || 'all';
+
+      const container = document.getElementById('sourcesList');
+      container.innerHTML = sources.map(s => {
+        const isError = (s.last_status || '').startsWith('수집 실패') || (s.last_status || '').startsWith('오류');
+        const cardStyle = isError
+          ? 'border-rose-300 bg-rose-50/40'
+          : 'border-slate-200 bg-slate-50/50';
+        const statusHtml = !s.last_status
+          ? '<span class="text-slate-400">아직 실행 이력 없음</span>'
+          : isError
+            ? `<span class="inline-flex items-center gap-1 text-rose-600 font-semibold">⚠ ${s.last_status}</span> <span class="text-slate-400">(${(s.last_run_at || '').replace('T', ' ')})</span>`
+            : `<span class="inline-flex items-center gap-1 text-emerald-700 font-medium">● ${s.last_status}</span> <span class="text-slate-400">(${(s.last_run_at || '').replace('T', ' ')})</span>`;
+
+        return `
+        <div class="p-4 rounded-xl border ${cardStyle} flex flex-wrap items-center justify-between gap-4">
+          <div class="space-y-1 flex-1 min-w-[260px]">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-sm text-slate-900">${s.name}</span>
+              <span class="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-700">${s.id}</span>
+              ${s.requires_login
+                ? (s.has_auth_session
+                    ? '<span class="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">로그인 세션 연결됨</span>'
+                    : '<span class="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">로그인 필요 (세션 미연결)</span>')
+                : '<span class="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700">오픈 구직사이트</span>'
+              }
+              ${isError ? '<span class="text-xs px-2 py-0.5 rounded bg-rose-600 text-white font-bold">수집 실패</span>' : ''}
+            </div>
+            <div class="text-xs text-slate-500 break-all">${s.url}</div>
+            <div class="text-xs">${statusHtml}</div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1">
+              <span class="text-xs text-slate-600 font-medium">회당 최대 수집:</span>
+              <input
+                type="number"
+                id="maxItems-${s.id}"
+                min="1"
+                max="500"
+                value="${s.max_items || 100}"
+                onkeydown="if(event.key==='Enter'){saveSourceMaxItems('${s.id}');}"
+                class="w-16 text-xs font-semibold text-center border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-500"
+              />
+              <span class="text-xs text-slate-500">건</span>
+              <button
+                onclick="saveSourceMaxItems('${s.id}')"
+                class="ml-1 px-2 py-0.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white"
+              >
+                저장
+              </button>
+            </div>
+            ${s.requires_login ? `
+              <button onclick="connectLoginSession('${s.id}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white shadow-sm">
+                브라우저 로그인 세션 연결
+              </button>
+            ` : ''}
+            <button onclick="triggerCollect('${s.id}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700">
+              이 사이트만 수집
+            </button>
+            ${(s.id !== 'gojobs' && s.id !== 'jobkorea') ? `
+              <button onclick="removeSource('${s.id}')" class="px-2.5 py-1.5 rounded-lg text-xs text-rose-600 hover:bg-rose-50">
+                삭제
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+      }).join('');
+    }
+
+    function renderLogs(logs) {
+      const el = document.getElementById('runLogsList');
+      if (!logs.length) {
+        el.innerHTML = '<div class="text-slate-400">아직 수집 실행 이력이 없습니다. 우측 상단 [지금 즉시 업데이트]를 눌러보세요.</div>';
+        return;
+      }
+      el.innerHTML = logs.map(l => `
+        <div class="flex flex-wrap items-center justify-between py-1.5 border-b border-slate-100 gap-2">
+          <div>
+            <span class="font-semibold text-slate-800">[${l.trigger_type === 'scheduled' ? '자동 스케줄' : '수동 실행'}]</span>
+            <span class="ml-1">${l.started_at.replace('T', ' ')}</span>
+            <span class="ml-2 text-slate-500">${l.summary || ''}</span>
+          </div>
+          <div class="font-medium text-indigo-700">
+            스캔 ${l.total_scanned}건 · 신규 +${l.new_saved}건 · 마감처리 ${l.expired_updated}건
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function scoreBadgeClass(score) {
+      if (score >= 80) return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      if (score >= 60) return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+      if (score >= 40) return 'bg-amber-100 text-amber-800 border-amber-300';
+      return 'bg-slate-100 text-slate-600 border-slate-300';
+    }
+
+    function updateLocBadge() {
+      const val = (document.getElementById('crit-locations')?.value || '').trim();
+      const note = document.getElementById('locBadgeNote');
+      if (!note) return;
+      const tokens = val.split(',').map(s => s.trim()).filter(Boolean);
+      if (tokens.includes('무관')) {
+        note.className = 'text-[11px] text-emerald-700 font-semibold mt-1';
+        note.innerHTML = '✓ <strong>무관</strong> 적용 중: 모든 공고를 선호지역으로 인정합니다.';
+      } else {
+        note.className = 'text-[11px] text-slate-500 mt-1';
+        note.innerHTML = '※ <strong>무관</strong>이면 모든 공고를 선호지역으로 인정합니다.';
+      }
+    }
+
+    function matchesCareerFilterClient(j, career) {
+      if (!career || career === 'all') return true;
+      const raw = `${j.employment_type || ''} ${j.title || ''} ${(j.content || '').slice(0, 300)}`;
+      const cleaned = raw
+        .replace(/학력무관/g, '')
+        .replace(/성별무관/g, '')
+        .replace(/연령무관/g, '')
+        .replace(/전공무관/g, '')
+        .replace(/경력경쟁채용시험/g, '')
+        .replace(/경력경쟁채용/g, '')
+        .replace(/경력경쟁/g, '')
+        .replace(/전문경력관/g, '');
+      const hasNewcomer = cleaned.includes('신입') || cleaned.includes('인턴');
+      const hasCareerFree = cleaned.includes('경력무관') || cleaned.includes('경력 무관') || j.source === 'gojobs';
+      const hasExp = cleaned.replace(/경력무관/g, '').replace(/경력 무관/g, '').includes('경력');
+
+      if (career === '신입') return hasNewcomer || (hasCareerFree && !hasExp);
+      if (career === '신입전용') return hasNewcomer;
+      if (career === '경력') return hasExp || j.source === 'gojobs';
+      if (career === '무관') return hasCareerFree;
+      return true;
+    }
+
+    function keywordInTextClient(kw, text) {
+      const k = (kw || '').trim();
+      if (!k || !text) return false;
+      let cleaned = text
+        .replace(/(?:서류\s*접수|원서\s*접수|응시원서\s*접수|접수\s*기간|접수\s*방법|접수처|제출\s*방법|제출\s*기간|관련\s*문의|문의처)\s*[:：][^|\n○oㅇ□■※]*/gi, ' ')
+        .replace(/전자\s*(?:공문(?:서)?|우편(?:함)?|메일|접수|문서|서명|결재|수입인지|정부(?:법)?|파일|관보|팩스|입찰|계약|민원|투표|사본|시스템|점자|소송|청구|증빙)/gi, ' ');
+      if (k === '전자') {
+        cleaned = cleaned.replace(/운전자/g, ' ');
+      }
+      if (/^[a-zA-Z0-9+#.]+$/.test(k)) {
+        const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`(?<![a-zA-Z])${escaped}(?![a-zA-Z])`, 'i');
+        return re.test(cleaned);
+      }
+      return cleaned.toLowerCase().includes(k.toLowerCase());
+    }
+
+    function matchesIncludeKeywordsClient(j) {
+      if (currentStatus === 'rejected' || j.status === 'saved' || j.status === 'applied') {
+        return true;
+      }
+      let rawContent = j.content || '';
+      if (j.source === 'jobkorea' && rawContent.includes('\n')) {
+        rawContent = rawContent.split('\n')[0];
+      }
+      const fullText = [
+        j.title || '',
+        j.employment_type || '',
+        rawContent
+      ].join(' ');
+      const rawExKws = (document.getElementById('crit-exclude')?.value || '').trim();
+      const exKws = rawExKws.split(',').map(k => k.trim()).filter(Boolean);
+      if (exKws.some(kw => keywordInTextClient(kw, fullText))) {
+        return false;
+      }
+      const rawKws = (document.getElementById('crit-include')?.value || '').trim();
+      const kws = rawKws.split(',').map(k => k.trim()).filter(Boolean);
+      if (!kws.length) return true;
+      return kws.some(kw => keywordInTextClient(kw, fullText));
+    }
+
+    async function loadJobs(keepPage = false) {
+      if (!keepPage) currentPage = 1;
+      const source = document.getElementById('filterSource').value || 'all';
+      const career = document.getElementById('filterCareer').value || 'all';
+      const search = document.getElementById('filterSearch').value || '';
+
+      const params = new URLSearchParams({ status: currentStatus, source, career, search });
+      const res = await fetch('/api/jobs?' + params.toString());
+      const data = await res.json();
+      const jobs = (data.jobs || [])
+        .filter(j => matchesIncludeKeywordsClient(j))
+        .filter(j => matchesCareerFilterClient(j, career))
+        .sort((a, b) => {
+          const cmp = (b.created_at || '').localeCompare(a.created_at || '');
+          return cmp !== 0 ? cmp : (b.id || 0) - (a.id || 0);
+        });
+
+      allFilteredJobs = jobs;
+      renderJobsPage();
+    }
+
+    function goToPage(page) {
+      currentPage = page;
+      renderJobsPage();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function renderJobsPage() {
+      const total = allFilteredJobs.length;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+
+      const startIdx = (currentPage - 1) * PAGE_SIZE;
+      const pageJobs = allFilteredJobs.slice(startIdx, startIdx + PAGE_SIZE);
+
+      const countBadge = document.getElementById('jobsCountBadge');
+      if (countBadge) {
+        countBadge.innerText = total > 0
+          ? `총 ${total}건 (${currentPage}/${totalPages}페이지)`
+          : '총 0건';
+      }
+
+      const container = document.getElementById('jobsContainer');
+      const pager = document.getElementById('paginationContainer');
+      if (!total) {
+        container.innerHTML = `
+          <div class="bg-white p-12 rounded-xl border border-slate-200 text-center space-y-2">
+            <div class="text-sm font-semibold text-slate-700">조건에 해당하는 공고가 없습니다.</div>
+            <div class="text-xs text-slate-500">우측 상단의 <strong>[지금 즉시 업데이트]</strong> 버튼을 눌러 나라일터·잡코리아 공고를 수집해 보세요.</div>
+          </div>
+        `;
+        if (pager) pager.innerHTML = '';
+        return;
+      }
+
+      container.innerHTML = pageJobs.map(j => `
+        <div class="bg-white p-4 sm:p-5 rounded-xl border ${j.status === 'saved' ? 'border-amber-300 bg-amber-50/10' : 'border-slate-200'} shadow-sm hover:border-indigo-300 transition">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1.5 flex-1 min-w-[260px]">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">${(j.source_name || '').replace(/\s*\(.*?\)/g, '').trim()}</span>
+                <span class="text-xs font-semibold text-slate-700">${j.company}</span>
+                ${j.location ? `<span class="text-xs text-slate-500">· ${j.location}</span>` : ''}
+                ${(j.employment_type || '').replace(/학력무관/g, '').trim() ? `<span class="text-xs font-semibold px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">${(j.employment_type || '').replace(/학력무관/g, '').trim()}</span>` : ''}
+                ${j.posted_at ? `<span class="text-xs text-slate-500">· 등록: ${j.posted_at}</span>` : ''}
+                ${j.deadline ? `<span class="text-xs font-medium text-rose-600">· 마감: ${j.deadline}</span>` : ''}
+                ${j.created_at ? `<span class="text-[11px] text-slate-400">· 수집: ${j.created_at.replace('T', ' ').slice(0, 16)}</span>` : ''}
+              </div>
+
+              <a href="${j.url}" target="_blank" rel="noopener" class="block text-base font-bold text-slate-900 hover:text-indigo-600 hover:underline">
+                ${j.title} ↗
+              </a>
+
+              <p class="text-xs text-slate-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                <strong class="text-slate-700">매칭 조건:</strong> ${j.ai_reason || '조건 매칭 완료'}
+              </p>
+
+              <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+                ${(j.ai_tags || []).map(t => `<span class="text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">#${t}</span>`).join('')}
+              </div>
+            </div>
+
+            <!-- 상태 변경 버튼 그룹 -->
+            <div class="flex flex-col items-end gap-2">
+              <div class="flex items-center gap-1">
+                <button onclick="changeJobStatus(${j.id}, 'saved')" class="px-2.5 py-1 rounded text-xs font-medium ${j.status === 'saved' ? 'bg-amber-500 text-white' : 'bg-slate-100 hover:bg-amber-100 text-slate-700'}">
+                  ★ 관심
+                </button>
+                <button onclick="changeJobStatus(${j.id}, 'applied')" class="px-2.5 py-1 rounded text-xs font-medium ${j.status === 'applied' ? 'bg-blue-600 text-white' : 'bg-slate-100 hover:bg-blue-100 text-slate-700'}">
+                  ✓ 지원완료
+                </button>
+                <button onclick="changeJobStatus(${j.id}, 'rejected')" class="px-2.5 py-1 rounded text-xs font-medium ${j.status === 'rejected' ? 'bg-rose-600 text-white' : 'bg-slate-100 hover:bg-rose-100 text-slate-600'}">
+                  확인완료
+                </button>
+              </div>
+              <input
+                type="text"
+                value="${(j.memo || '').replace(/"/g, '&quot;')}"
+                placeholder="메모 입력 (Enter로 저장)"
+                onkeydown="if(event.key==='Enter'){saveJobMemo(${j.id}, this.value); this.blur();}"
+                onblur="saveJobMemo(${j.id}, this.value)"
+                class="text-xs border border-slate-200 rounded px-2.5 py-1 w-48 focus:outline-none focus:border-indigo-400"
+              />
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      if (pager) {
+        let pageBtns = '';
+        const startPage = Math.max(1, currentPage - 4);
+        const endPage = Math.min(totalPages, startPage + 9);
+        for (let p = startPage; p <= endPage; p++) {
+          pageBtns += `
+            <button
+              onclick="goToPage(${p})"
+              class="w-8 h-8 rounded-lg text-xs font-bold transition ${p === currentPage ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}"
+            >${p}</button>
+          `;
+        }
+        pager.innerHTML = `
+          <div class="bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs text-slate-500">
+              전체 <strong class="text-slate-800">${total}</strong>건 중 <strong class="text-slate-800">${startIdx + 1}–${Math.min(startIdx + PAGE_SIZE, total)}</strong>번째 (최신 수집일 순)
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button
+                onclick="goToPage(${currentPage - 1})"
+                ${currentPage <= 1 ? 'disabled' : ''}
+                class="px-3 h-8 rounded-lg text-xs font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none"
+              >이전</button>
+              ${pageBtns}
+              <button
+                onclick="goToPage(${currentPage + 1})"
+                ${currentPage >= totalPages ? 'disabled' : ''}
+                class="px-3 h-8 rounded-lg text-xs font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none"
+              >다음</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function changeJobStatus(jobId, status) {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      await loadOverview();
+      await loadJobs(true);
+    }
+
+    async function saveJobMemo(jobId, memo) {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memo })
+      });
+    }
+
+    async function saveCriteria() {
+      const payload = {
+        include_keywords: document.getElementById('crit-include').value,
+        exclude_keywords: document.getElementById('crit-exclude').value,
+        preferred_locations: document.getElementById('crit-locations').value,
+        preferred_career: document.getElementById('crit-career').value || '무관',
+        max_age_days: parseInt(document.getElementById('crit-max-age').value || '7', 10),
+        schedule_minutes: parseInt(document.getElementById('crit-schedule').value || '180', 10),
+        auto_schedule_enabled: document.getElementById('crit-auto-enabled').checked,
+        ai_prompt: '',
+        min_score: 0,
+        gemini_model: ''
+      };
+      await fetch('/api/criteria', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      await loadOverview();
+      await loadJobs();
+      alert('내 맞춤 조건이 저장되었으며, 기존 공고들의 매칭 여부가 새 조건으로 갱신되었습니다.');
+    }
+
+    async function addNewSource() {
+      const id = document.getElementById('newSrc-id').value.trim();
+      const name = document.getElementById('newSrc-name').value.trim();
+      const url = document.getElementById('newSrc-url').value.trim();
+      const login_url = document.getElementById('newSrc-loginUrl').value.trim();
+      const max_items = parseInt(document.getElementById('newSrc-max').value || '100', 10);
+      const requires_login = document.getElementById('newSrc-loginReq').checked;
+
+      if (!id || !name || !url) {
+        alert('사이트 ID, 이름, 채용 목록 URL을 모두 입력해 주세요.');
+        return;
+      }
+
+      await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id, name, url, login_url, max_items, requires_login,
+          scraper_type: 'generic', enabled: true
+        })
+      });
+      document.getElementById('newSrc-id').value = '';
+      document.getElementById('newSrc-name').value = '';
+      document.getElementById('newSrc-url').value = '';
+      document.getElementById('newSrc-loginUrl').value = '';
+      await loadOverview();
+      alert(`'${name}' 사이트가 등록되었습니다.`);
+    }
+
+    async function removeSource(sourceId) {
+      if (!confirm('이 구직 사이트를 목록에서 삭제하시겠습니까?')) return;
+      await fetch(`/api/sources/${sourceId}`, { method: 'DELETE' });
+      await loadOverview();
+    }
+
+    async function saveSourceMaxItems(sourceId) {
+      const input = document.getElementById(`maxItems-${sourceId}`);
+      if (!input) return;
+      const val = parseInt(input.value || '100', 10);
+      if (isNaN(val) || val < 1 || val > 500) {
+        alert('회당 최대 수집 건수는 1~500 사이의 숫자로 입력해 주세요.');
+        return;
+      }
+      const res = await fetch(`/api/sources/${sourceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_items: val })
+      });
+      if (res.ok) {
+        await loadOverview();
+        alert(`'${sourceId}' 사이트의 회당 최대 수집 건수가 ${val}건으로 저장되었습니다.`);
+      }
+    }
+
+    async function triggerCollect(sourceId = null) {
+      const url = sourceId ? `/api/collect?source_id=${encodeURIComponent(sourceId)}` : '/api/collect';
+      const res = await fetch(url, { method: 'POST' });
+      const data = await res.json();
+      await loadOverview();
+    }
+
+    async function resetAndRecollect() {
+      if (!confirm('기존에 수집된 모든 공고와 실행 이력을 DB에서 완전히 삭제하고 처음부터 다시 수집하시겠습니까?\n(내 맞춤 조건 설정과 사이트/로그인 세션은 그대로 유지됩니다.)')) {
+        return;
+      }
+      const res = await fetch('/api/reset?recollect=true', { method: 'POST' });
+      const data = await res.json();
+      await loadOverview();
+      await loadJobs();
+    }
+
+    async function connectLoginSession(sourceId) {
+      alert('확인을 누르면 로그인용 브라우저 창이 열립니다.\n해당 사이트에 로그인하신 뒤 브라우저 창을 닫으면 로그인 세션(쿠키)이 자동으로 저장됩니다.');
+      const res = await fetch(`/api/sources/${sourceId}/login`, { method: 'POST' });
+      const data = await res.json();
+      alert(data.message);
+      await loadOverview();
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      await loadOverview();
+      await loadJobs();
+    });
+  </script>
+</body>
+</html>
